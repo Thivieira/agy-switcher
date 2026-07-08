@@ -193,17 +193,14 @@ describe('ProfileManager.switch()', () => {
   });
 
   it('releases the lock when an internal step throws', async () => {
-    // Wire up a symlinkEngine that will throw on repair()
-    const brokenEngine = new SymlinkEngine(
-      antigravityDir,
-      sharedDir,
-      SHARED_ITEMS,
-    );
-    // Place a real file at the symlink position to trigger ERR_SYMLINK_CONFLICT
-    // Must unlink the existing symlink first (writeFile follows symlinks, doesn't replace them)
-    const { unlink } = await import('fs/promises');
-    await unlink(join(antigravityDir, 'mcp.json'));
-    await writeFile(join(antigravityDir, 'mcp.json'), 'real file', 'utf-8');
+    // Symlink conflicts now self-heal (see SymlinkEngine.test.ts), so simulate
+    // a genuine internal failure with a stub instead of relying on that path.
+    class ThrowingSymlinkEngine extends SymlinkEngine {
+      override async repair(): Promise<void> {
+        throw new Error('simulated repair failure');
+      }
+    }
+    const brokenEngine = new ThrowingSymlinkEngine(antigravityDir, sharedDir, SHARED_ITEMS);
 
     const m2 = new ProfileManager(
       configStore,
@@ -214,7 +211,7 @@ describe('ProfileManager.switch()', () => {
       keychainManager,
     );
 
-    await expect(m2.switch('work')).rejects.toThrow(AgywError);
+    await expect(m2.switch('work')).rejects.toThrow('simulated repair failure');
 
     // Lock must be released
     const { existsSync } = await import('fs');

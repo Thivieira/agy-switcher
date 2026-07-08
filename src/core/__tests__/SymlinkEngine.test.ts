@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile, symlink } from 'fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, symlink, readdir, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { SymlinkEngine } from '../SymlinkEngine.js';
-import { AgywError } from '../../utils/errors.js';
 
 let testRoot: string;
 let antigravityDir: string;
@@ -73,28 +72,68 @@ describe('SymlinkEngine.repair()', () => {
     );
   });
 
-  it('throws ERR_SYMLINK_CONFLICT when a real file exists at the link path', async () => {
-    // Place a real (non-symlink) file where the symlink should go
+  it('adopts a real file into sharedDir when no shared target exists yet, then symlinks it', async () => {
+    // Place a real (non-symlink) file where the symlink should go; no shared target yet.
     await writeFile(join(antigravityDir, 'keybindings.json'), 'real content', 'utf-8');
 
     const engine = new SymlinkEngine(antigravityDir, sharedDir, ['keybindings.json']);
+    await engine.repair();
 
-    await expect(engine.repair()).rejects.toThrow(AgywError);
-    await expect(engine.repair()).rejects.toMatchObject({
-      code: 'ERR_SYMLINK_CONFLICT',
-    });
+    const { lstat, readlink } = await import('fs/promises');
+    const linkStat = await lstat(join(antigravityDir, 'keybindings.json'));
+    expect(linkStat.isSymbolicLink()).toBe(true);
+    expect(await readlink(join(antigravityDir, 'keybindings.json'))).toBe(
+      join(sharedDir, 'keybindings.json'),
+    );
+    expect(await readFile(join(sharedDir, 'keybindings.json'), 'utf-8')).toBe('real content');
   });
 
-  it('throws ERR_SYMLINK_CONFLICT when a real directory exists at the link path', async () => {
-    // Place a real directory where the symlink should go
+  it('adopts a real directory into sharedDir when no shared target exists yet, then symlinks it', async () => {
+    // Place a real directory where the symlink should go; no shared target yet.
     await mkdir(join(antigravityDir, 'brain'), { recursive: true });
+    await writeFile(join(antigravityDir, 'brain', 'note.txt'), 'hello', 'utf-8');
 
     const engine = new SymlinkEngine(antigravityDir, sharedDir, ['brain/']);
+    await engine.repair();
 
-    await expect(engine.repair()).rejects.toThrow(AgywError);
-    await expect(engine.repair()).rejects.toMatchObject({
-      code: 'ERR_SYMLINK_CONFLICT',
-    });
+    const { lstat, readlink } = await import('fs/promises');
+    const linkStat = await lstat(join(antigravityDir, 'brain'));
+    expect(linkStat.isSymbolicLink()).toBe(true);
+    expect(await readlink(join(antigravityDir, 'brain'))).toBe(join(sharedDir, 'brain'));
+    expect(await readFile(join(sharedDir, 'brain', 'note.txt'), 'utf-8')).toBe('hello');
+  });
+
+  it('backs up a real file (does not delete it) when a shared target already exists, then symlinks it', async () => {
+    // Shared target already has content, and a conflicting real file sits at the link path.
+    await writeFile(join(sharedDir, 'keybindings.json'), 'shared content', 'utf-8');
+    await writeFile(join(antigravityDir, 'keybindings.json'), 'conflicting real content', 'utf-8');
+
+    const engine = new SymlinkEngine(antigravityDir, sharedDir, ['keybindings.json']);
+    await engine.repair();
+
+    const { lstat, readlink } = await import('fs/promises');
+    const linkStat = await lstat(join(antigravityDir, 'keybindings.json'));
+    expect(linkStat.isSymbolicLink()).toBe(true);
+    expect(await readlink(join(antigravityDir, 'keybindings.json'))).toBe(
+      join(sharedDir, 'keybindings.json'),
+    );
+    // Shared target is untouched
+    expect(await readFile(join(sharedDir, 'keybindings.json'), 'utf-8')).toBe('shared content');
+    // The conflicting real file was preserved via backup, not deleted
+    const entries = await readdir(antigravityDir);
+    const backupName = entries.find(e => e.startsWith('keybindings.json.agyw-backup-'));
+    expect(backupName).toBeDefined();
+    expect(await readFile(join(antigravityDir, backupName!), 'utf-8')).toBe(
+      'conflicting real content',
+    );
+  });
+
+  it('is idempotent when resolving a conflict — running repair() twice does not error', async () => {
+    await writeFile(join(antigravityDir, 'keybindings.json'), 'real content', 'utf-8');
+
+    const engine = new SymlinkEngine(antigravityDir, sharedDir, ['keybindings.json']);
+    await engine.repair();
+    await expect(engine.repair()).resolves.toBeUndefined();
   });
 });
 

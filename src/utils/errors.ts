@@ -5,7 +5,6 @@ export type ErrorCode =
   | 'ERR_REMOVE_LAST'
   | 'ERR_AMBIGUOUS_PROFILE'
   | 'ERR_NO_PROFILES'
-  | 'ERR_SYMLINK_CONFLICT'
   | 'ERR_AGY_NOT_FOUND'
   | 'ERR_ANTIGRAVITY_NOT_INIT'
   | 'ERR_CONCURRENT_SWITCH'
@@ -19,7 +18,6 @@ const ERROR_MESSAGES: Record<ErrorCode, string> = {
   ERR_REMOVE_LAST: "Không thể xóa profile cuối cùng. Cần ít nhất 1 profile.",
   ERR_AMBIGUOUS_PROFILE: "Prefix '{name}' khớp nhiều profile: {matches}. Hãy nhập tên đầy đủ.",
   ERR_NO_PROFILES: "Chưa có profile nào. Chạy `agyw init` để bắt đầu.",
-  ERR_SYMLINK_CONFLICT: "Conflict: '{item}' là real file, không phải symlink. Resolve thủ công hoặc chạy `agyw doctor --fix`.",
   ERR_AGY_NOT_FOUND: "`agy` không tìm thấy trong PATH. Cài đặt `agy` và đảm bảo nó có trong PATH.",
   ERR_ANTIGRAVITY_NOT_INIT: "Thư mục `~/.gemini/antigravity-cli/` chưa tồn tại. Chạy `agy` lần đầu để khởi tạo.",
   ERR_CONCURRENT_SWITCH: "Đang có switch operation khác đang chạy. Thử lại sau. Lock tự xóa sau 30 giây.",

@@ -1,6 +1,5 @@
-import { symlink, unlink, lstat, readlink, access, mkdir } from 'fs/promises';
+import { symlink, unlink, lstat, readlink, access, mkdir, rename, cp, rm } from 'fs/promises';
 import { join } from 'path';
-import { AgywError } from '../utils/errors.js';
 
 export class SymlinkEngine {
   constructor(
@@ -13,14 +12,10 @@ export class SymlinkEngine {
   // antigravityDir/item → sharedDir/item (absolute path target)
   async repair(): Promise<void> {
     for (const item of this.sharedItems) {
-      const normalizedItem = item.endsWith('/') ? item.slice(0, -1) : item;
+      const isDir = item.endsWith('/');
+      const normalizedItem = isDir ? item.slice(0, -1) : item;
       const linkPath = join(this.antigravityDir, normalizedItem);
       const targetPath = join(this.sharedDir, normalizedItem);
-
-      // Ensure target directory exists when item represents a directory
-      if (item.endsWith('/')) {
-        await mkdir(targetPath, { recursive: true });
-      }
 
       try {
         const st = await lstat(linkPath);
@@ -32,16 +27,52 @@ export class SymlinkEngine {
           }
           // else already correct, nothing to do
         } else {
-          // Real file or dir — conflict
-          throw new AgywError('ERR_SYMLINK_CONFLICT', { item: normalizedItem });
+          // Real file/dir where a symlink is expected — self-heal (SD §10.5)
+          // instead of erroring, so switch/doctor --fix never gets stuck.
+          await this.resolveConflict(linkPath, targetPath);
         }
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-          // linkPath doesn't exist — create symlink
+          // linkPath doesn't exist — create the shared target dir first (if
+          // this item is a directory) so the fresh symlink resolves cleanly.
+          if (isDir) await mkdir(targetPath, { recursive: true });
           await symlink(targetPath, linkPath);
         } else {
           throw err;
         }
+      }
+    }
+  }
+
+  // A real file/dir sits where a symlink belongs. Adopt it as the shared
+  // target if none exists yet; otherwise back it up (never delete — NFR-002)
+  // so the conflicting data is preserved for manual inspection.
+  private async resolveConflict(linkPath: string, targetPath: string): Promise<void> {
+    const targetExists = await access(targetPath).then(
+      () => true,
+      () => false,
+    );
+    if (targetExists) {
+      const backupPath = `${linkPath}.agyw-backup-${Date.now()}`;
+      await rename(linkPath, backupPath);
+      process.stderr.write(
+        `WARN: ${linkPath} conflicted with existing shared data; backed up to ${backupPath}\n`,
+      );
+    } else {
+      await this.moveInto(linkPath, targetPath);
+    }
+    await symlink(targetPath, linkPath);
+  }
+
+  private async moveInto(src: string, dest: string): Promise<void> {
+    try {
+      await rename(src, dest);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'EXDEV') {
+        await cp(src, dest, { recursive: true });
+        await rm(src, { recursive: true, force: true });
+      } else {
+        throw err;
       }
     }
   }

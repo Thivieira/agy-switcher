@@ -26,7 +26,11 @@ program.command('switch <name>').description('Switch to profile (supports prefix
 
 program.command('status').description('Show active profile and symlink health').action(statusCommand);
 
-program.command('doctor').description('Diagnose profile and symlink issues').action(doctorCommand);
+program
+  .command('doctor')
+  .description('Diagnose profile and symlink issues')
+  .option('--fix', 'Repair broken/missing symlinks and resolve real-file conflicts')
+  .action(doctorCommand);
 
 const run = program.command('run <name>').description('Switch profile and spawn agy');
 run.allowUnknownOption(true);
