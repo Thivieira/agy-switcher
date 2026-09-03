@@ -10,7 +10,13 @@ import type { CredentialStore } from './CredentialStore.js';
 import type { ProcessGuard } from './ProcessGuard.js';
 import { AgywError } from '../utils/errors.js';
 
-const CREDENTIAL_FILES = ['installation_id', 'user_settings.pb', 'keychain.token', 'antigravity-oauth-token'];
+const CREDENTIAL_FILES = [
+  'installation_id',
+  'user_settings.pb',
+  'keychain.token',
+  'antigravity-oauth-token',
+  'oauth_creds.json',
+];
 
 export class ProfileManager {
   constructor(
@@ -21,6 +27,7 @@ export class ProfileManager {
     private historyTracker: HistoryTracker,
     private keychainManager: CredentialStore,
     private processGuard?: ProcessGuard,
+    private privateItems: string[] = [],
   ) {}
 
   private get profilesDir(): string {
@@ -28,16 +35,21 @@ export class ProfileManager {
   }
 
   // FR-004
-  async switch(name: string): Promise<void> {
-    // Block switching while Antigravity/agy is alive — it would revert the
-    // keychain to its own account and contaminate profiles.
-    if (this.processGuard) await this.processGuard.assertNotRunning();
-
+  async switch(name: string, opts?: { kill?: boolean }): Promise<void> {
     await this.lockManager.acquire();
     try {
       const resolved = await this.resolveProfile(name);
       const active = await this.configStore.getActive();
       if (resolved === active.profile) return;
+
+      // Block or kill running processes only when an actual switch is needed
+      if (this.processGuard) {
+        if (opts?.kill) {
+          await this.processGuard.killRunning();
+        } else {
+          await this.processGuard.assertNotRunning();
+        }
+      }
 
       await this.keychainManager.save(active.profile);
       await this.fileSwapper.save(active.profile);
@@ -106,6 +118,7 @@ export class ProfileManager {
     }
 
     await this.fileSwapper.save('default');
+    await this.keychainManager.save('default');
     await this.symlinkEngine.repair();
 
     await this.configStore.writeConfig({
@@ -119,14 +132,14 @@ export class ProfileManager {
           created_at: new Date().toISOString(),
         },
       },
-      private: sharedItems.map(i => (i.endsWith('/') ? i.slice(0, -1) : i)),
+      private: this.privateItems.length > 0 ? this.privateItems : sharedItems.map(i => (i.endsWith('/') ? i.slice(0, -1) : i)),
       shared: sharedItems,
     });
     await this.configStore.setActive('default');
   }
 
   // FR-002
-  async addProfile(name: string, cloneFrom?: string): Promise<void> {
+  async addProfile(name: string, cloneFrom?: string, email?: string): Promise<void> {
     const config = await this.configStore.readConfig();
 
     if (config.profiles[name]) {
@@ -157,6 +170,7 @@ export class ProfileManager {
     config.profiles[name] = {
       path: destDir,
       model: sourceEntry.model,
+      ...(email ? { email } : {}),
       created_at: new Date().toISOString(),
     };
     await this.configStore.writeConfig(config);

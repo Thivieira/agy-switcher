@@ -89,3 +89,32 @@ describe('ProcessGuard.assertNotRunning()', () => {
     await expect(guardWith('').assertNotRunning()).resolves.toBeUndefined();
   });
 });
+
+describe('ProcessGuard.killRunning()', () => {
+  it('sends signals to running processes and returns count', async () => {
+    const killed: { pid: number; signal: string }[] = [];
+    const fakeKiller = (pid: number, signal: NodeJS.Signals) => {
+      killed.push({ pid, signal });
+    };
+
+    let runs = 0;
+    const lister = async () => {
+      runs++;
+      // First call finds running process, second call finds none (simulating exit)
+      return runs === 1 ? '1234 agy chat\n5678 /usr/bin/agy run' : '';
+    };
+
+    const guard = new ProcessGuard(lister, fakeKiller);
+    const count = await guard.killRunning();
+
+    expect(count).toBe(2);
+    expect(killed).toContainEqual({ pid: 1234, signal: 'SIGTERM' });
+    expect(killed).toContainEqual({ pid: 5678, signal: 'SIGTERM' });
+  });
+
+  it('returns 0 when no processes are running', async () => {
+    const guard = new ProcessGuard(async () => '', () => {});
+    const count = await guard.killRunning();
+    expect(count).toBe(0);
+  });
+});

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { createProfileManager } from '../factory.js';
 import { MacOSKeychainStore } from '../KeychainManager.js';
-import { NoOpCredentialStore } from '../NoOpCredentialStore.js';
+import { LinuxCredentialStore } from '../LinuxCredentialStore.js';
 import { ProfileManager } from '../ProfileManager.js';
 
 vi.mock('../KeychainManager.js', () => ({
@@ -9,8 +9,8 @@ vi.mock('../KeychainManager.js', () => ({
   KeychainManager: vi.fn(),
 }));
 
-vi.mock('../NoOpCredentialStore.js', () => ({
-  NoOpCredentialStore: vi.fn(),
+vi.mock('../LinuxCredentialStore.js', () => ({
+  LinuxCredentialStore: vi.fn(),
 }));
 
 describe('factory', () => {
@@ -28,7 +28,7 @@ describe('factory', () => {
       vi.clearAllMocks();
       createProfileManager('/tmp/agyw');
       expect(MacOSKeychainStore).toHaveBeenCalled();
-      expect(NoOpCredentialStore).not.toHaveBeenCalled();
+      expect(LinuxCredentialStore).not.toHaveBeenCalled();
     });
   });
 
@@ -37,10 +37,10 @@ describe('factory', () => {
     beforeAll(() => Object.defineProperty(process, 'platform', { value: 'linux' }));
     afterAll(() => Object.defineProperty(process, 'platform', { value: origPlatform }));
 
-    it('uses NoOpCredentialStore', () => {
+    it('uses LinuxCredentialStore', () => {
       vi.clearAllMocks();
       createProfileManager('/tmp/agyw');
-      expect(NoOpCredentialStore).toHaveBeenCalled();
+      expect(LinuxCredentialStore).toHaveBeenCalled();
       expect(MacOSKeychainStore).not.toHaveBeenCalled();
     });
   });

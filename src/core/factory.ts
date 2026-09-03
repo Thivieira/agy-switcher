@@ -6,7 +6,7 @@ import { SymlinkEngine } from './SymlinkEngine.js';
 import { LockManager } from './LockManager.js';
 import { HistoryTracker } from './HistoryTracker.js';
 import { MacOSKeychainStore } from './KeychainManager.js';
-import { NoOpCredentialStore } from './NoOpCredentialStore.js';
+import { LinuxCredentialStore } from './LinuxCredentialStore.js';
 import { ProcessGuard } from './ProcessGuard.js';
 import { ProfileManager } from './ProfileManager.js';
 import type { CredentialStore } from './CredentialStore.js';
@@ -49,10 +49,19 @@ export function createProfileManager(agywDir = join(homedir(), '.agyw')): Profil
   const credentialStore: CredentialStore =
     process.platform === 'darwin'
       ? new MacOSKeychainStore(profilesDir)
-      : new NoOpCredentialStore();
+      : new LinuxCredentialStore(profilesDir);
   const processGuard = new ProcessGuard();
 
-  return new ProfileManager(configStore, fileSwapper, symlinkEngine, lockManager, historyTracker, credentialStore, processGuard);
+  return new ProfileManager(
+    configStore,
+    fileSwapper,
+    symlinkEngine,
+    lockManager,
+    historyTracker,
+    credentialStore,
+    processGuard,
+    PRIVATE_ITEMS,
+  );
 }
 
 export { ANTIGRAVITY_DIR, PRIVATE_ITEMS, SHARED_ITEMS };

@@ -1,10 +1,10 @@
 import { createProfileManager } from '../../core/factory.js';
 import { handleError } from '../../utils/cli-helpers.js';
 
-export async function addProfileCommand(name: string, opts: { clone?: string }): Promise<void> {
+export async function addProfileCommand(name: string, opts: { clone?: string; email?: string }): Promise<void> {
   try {
     const manager = createProfileManager();
-    await manager.addProfile(name, opts.clone);
+    await manager.addProfile(name, opts.clone, opts.email);
     process.stdout.write(`Profile '${name}' created.\n`);
 
     await manager.switch(name);

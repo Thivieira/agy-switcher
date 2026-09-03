@@ -217,6 +217,73 @@ describe('ProfileManager.switch()', () => {
     const { existsSync } = await import('fs');
     expect(existsSync(join(agywDir, 'agyw.lock'))).toBe(false);
   });
+
+  it('does not throw when switching to already active profile even if agy is running', async () => {
+    const fakeGuard = {
+      assertNotRunning: vi.fn().mockRejectedValue(new AgywError('ERR_ANTIGRAVITY_RUNNING')),
+      killRunning: vi.fn(),
+      findRunning: vi.fn().mockResolvedValue([{ pid: 123, label: 'agy CLI' }]),
+    } as any;
+
+    const m = new ProfileManager(
+      configStore,
+      fileSwapper,
+      symlinkEngine,
+      lockManager,
+      historyTracker,
+      keychainManager,
+      fakeGuard,
+    );
+
+    // Switching to already active 'default'
+    await expect(m.switch('default')).resolves.toBeUndefined();
+    expect(fakeGuard.assertNotRunning).not.toHaveBeenCalled();
+  });
+
+  it('calls killRunning when opts.kill is true', async () => {
+    const fakeGuard = {
+      assertNotRunning: vi.fn(),
+      killRunning: vi.fn().mockResolvedValue(1),
+      findRunning: vi.fn(),
+    } as any;
+
+    const m = new ProfileManager(
+      configStore,
+      fileSwapper,
+      symlinkEngine,
+      lockManager,
+      historyTracker,
+      keychainManager,
+      fakeGuard,
+    );
+
+    await m.switch('work', { kill: true });
+    expect(fakeGuard.killRunning).toHaveBeenCalled();
+    expect(fakeGuard.assertNotRunning).not.toHaveBeenCalled();
+  });
+
+  it('throws ERR_ANTIGRAVITY_RUNNING when switching to another profile while agy is running without kill', async () => {
+    const fakeGuard = {
+      assertNotRunning: vi.fn().mockRejectedValue(new AgywError('ERR_ANTIGRAVITY_RUNNING')),
+      killRunning: vi.fn(),
+      findRunning: vi.fn(),
+    } as any;
+
+    const m = new ProfileManager(
+      configStore,
+      fileSwapper,
+      symlinkEngine,
+      lockManager,
+      historyTracker,
+      keychainManager,
+      fakeGuard,
+    );
+
+    await expect(m.switch('work')).rejects.toMatchObject({
+      code: 'ERR_ANTIGRAVITY_RUNNING',
+    });
+    expect(fakeGuard.assertNotRunning).toHaveBeenCalled();
+  });
 });
 
 // ─── addProfile ───────────────────────────────────────────────────────────
@@ -236,6 +303,12 @@ describe('ProfileManager.addProfile()', () => {
     // Profile directory should exist
     const { access } = await import('fs/promises');
     await expect(access(join(profilesDir, 'staging'))).resolves.toBeUndefined();
+  });
+
+  it('saves email if provided', async () => {
+    await manager.addProfile('staging', undefined, 'user@example.com');
+    const config = await configStore.readConfig();
+    expect(config.profiles['staging'].email).toBe('user@example.com');
   });
 
   it('clones from active profile when cloneFrom is not provided', async () => {

@@ -1,6 +1,7 @@
 export interface Profile {
   path: string;
   model: string;
+  email?: string;
   created_at: string;
 }
 

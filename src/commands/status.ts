@@ -4,6 +4,7 @@ import { ANTIGRAVITY_DIR, SHARED_ITEMS } from '../core/factory.js';
 import { handleError } from '../utils/cli-helpers.js';
 import { homedir } from 'os';
 import { join } from 'path';
+import { detectProfileEmail } from '../utils/email.js';
 
 export async function statusCommand(): Promise<void> {
   try {
@@ -12,8 +13,12 @@ export async function statusCommand(): Promise<void> {
     const active = await configStore.getActive();
     const config = await configStore.readConfig();
     const profile = config.profiles[active.profile];
+    const email = profile?.email || (profile ? await detectProfileEmail(profile.path) : undefined);
 
     process.stdout.write(`Active profile: ${active.profile}\n`);
+    if (email) {
+      process.stdout.write(`Account:        ${email}\n`);
+    }
     process.stdout.write(`Path:           ${profile?.path ?? 'unknown'}\n`);
     process.stdout.write(`Switched at:    ${active.switched_at}\n`);
 

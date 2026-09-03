@@ -20,8 +20,11 @@ export interface RunningProcess {
  * credentials safely while it runs.
  */
 export class ProcessGuard {
-  // `listProcesses` is injectable so tests don't shell out to the real `ps`.
-  constructor(private listProcesses: () => Promise<string> = defaultLister) {}
+  // `listProcesses` and `killProcess` are injectable so tests don't shell out or kill real processes.
+  constructor(
+    private listProcesses: () => Promise<string> = defaultLister,
+    private killProcess: (pid: number, signal: NodeJS.Signals) => void = defaultKiller,
+  ) {}
 
   async findRunning(): Promise<RunningProcess[]> {
     let out: string;
@@ -67,9 +70,39 @@ export class ProcessGuard {
     const detail = running.map(p => `${p.label} (pid ${p.pid})`).join(', ');
     throw new AgywError('ERR_ANTIGRAVITY_RUNNING', { detail });
   }
+
+  async killRunning(): Promise<number> {
+    const running = await this.findRunning();
+    if (running.length === 0) return 0;
+
+    for (const p of running) {
+      try {
+        this.killProcess(p.pid, 'SIGTERM');
+      } catch {
+        // already exited
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 200));
+
+    const stillRunning = await this.findRunning();
+    for (const p of stillRunning) {
+      try {
+        this.killProcess(p.pid, 'SIGKILL');
+      } catch {
+        // already exited
+      }
+    }
+
+    return running.length;
+  }
 }
 
 const defaultLister = async (): Promise<string> => {
   const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,command=']);
   return stdout;
+};
+
+const defaultKiller = (pid: number, signal: NodeJS.Signals): void => {
+  process.kill(pid, signal);
 };
